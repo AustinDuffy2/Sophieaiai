@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SavedTranscription } from '../services/localStorage';
+import AISummaryOverlay from '../components/AISummaryOverlay';
 
 const { width, height } = Dimensions.get('window');
 
@@ -29,6 +30,7 @@ const VideoDetailScreen: React.FC = () => {
   };
 
   const [selectedCaption, setSelectedCaption] = useState<any | null>(null);
+  const [showAISummary, setShowAISummary] = useState(false);
 
   const styles = StyleSheet.create({
     container: {
@@ -49,6 +51,10 @@ const VideoDetailScreen: React.FC = () => {
       flexDirection: 'row',
       alignItems: 'center',
     },
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
     backButton: {
       padding: 8,
       marginRight: 12,
@@ -57,6 +63,11 @@ const VideoDetailScreen: React.FC = () => {
       fontSize: 18,
       fontWeight: '600',
       color: isDark ? '#FFFFFF' : '#000000',
+    },
+    openaiIcon: {
+      padding: 8,
+      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
+      borderRadius: 8,
     },
     content: {
       flex: 1,
@@ -274,6 +285,10 @@ const VideoDetailScreen: React.FC = () => {
     setSelectedCaption(selectedCaption?.id === caption.id ? null : caption);
   };
 
+  const handleOpenAIPress = () => {
+    setShowAISummary(true);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -286,6 +301,16 @@ const VideoDetailScreen: React.FC = () => {
             />
           </TouchableOpacity>
           <Text style={styles.title}>Video Details</Text>
+        </View>
+        
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.openaiIcon} onPress={handleOpenAIPress}>
+            <Ionicons 
+              name="logo-openai" 
+              size={20} 
+              color={isDark ? '#10A37F' : '#10A37F'} 
+            />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -373,6 +398,14 @@ const VideoDetailScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* AI Summary Overlay */}
+      <AISummaryOverlay
+        visible={showAISummary}
+        onClose={() => setShowAISummary(false)}
+        captions={videoDetail.captions}
+        videoTitle={videoDetail.video_title}
+      />
     </SafeAreaView>
   );
 };
