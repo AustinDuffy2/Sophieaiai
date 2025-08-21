@@ -17,7 +17,7 @@ import CaptionOverlay from '../components/CaptionOverlay';
 import ProcessingModal from '../components/ProcessingModal';
 import NotificationBanner from '../components/NotificationBanner';
 import { SupabaseService, Caption } from '../services/supabase';
-import LocalStorageService from '../services/localStorage';
+import LocalStorageService, { QueuedVideo } from '../services/localStorage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,6 +35,7 @@ const YouTubeWebViewScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showNotification, setShowNotification] = useState(false);
   const [isTranscriptionSaved, setIsTranscriptionSaved] = useState(false);
+  const [isVideoQueued, setIsVideoQueued] = useState(false);
   const webViewRef = useRef<WebView>(null);
 
   const styles = StyleSheet.create({
@@ -98,6 +99,32 @@ const YouTubeWebViewScreen: React.FC = () => {
     },
     captionButtonTextDisabled: {
       color: isDark ? '#8E8E93' : '#8E8E93',
+    },
+    queueButton: {
+      backgroundColor: '#FF3B30',
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginRight: 12,
+      shadowColor: '#FF3B30',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    queueButtonActive: {
+      backgroundColor: '#34C759',
+    },
+    queueButtonText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '600',
+      marginLeft: 6,
     },
     closeButton: {
       padding: 8,
@@ -291,6 +318,13 @@ const YouTubeWebViewScreen: React.FC = () => {
     checkIfSaved();
   };
 
+  // Check queue status when URL changes
+  useEffect(() => {
+    if (currentYouTubeUrl) {
+      checkIfQueued();
+    }
+  }, [currentYouTubeUrl]);
+
   const handleDismissNotification = () => {
     setShowNotification(false);
   };
@@ -335,6 +369,82 @@ const YouTubeWebViewScreen: React.FC = () => {
     }
   };
 
+  const checkIfQueued = async () => {
+    if (currentYouTubeUrl) {
+      const queued = await LocalStorageService.isVideoQueued(currentYouTubeUrl);
+      setIsVideoQueued(queued);
+    }
+  };
+
+  const handleAddToQueue = async () => {
+    if (!currentYouTubeUrl || !isVideoPage) {
+      Alert.alert('Error', 'Please navigate to a YouTube video first');
+      return;
+    }
+
+    try {
+      console.log('🎬 Adding video to queue:', currentYouTubeUrl);
+      const videoTitle = getVideoTitle(currentYouTubeUrl);
+      const videoId = extractVideoId(currentYouTubeUrl);
+      
+      console.log('📝 Video title:', videoTitle);
+      console.log('🎯 Video ID:', videoId);
+      
+      const queueItem = {
+        title: videoTitle,
+        url: currentYouTubeUrl,
+        videoId: videoId,
+        channelTitle: 'YouTube Channel', // You can enhance this with real channel info
+        viewCount: 'Unknown', // You can enhance this with real view count
+        publishedAt: new Date().toISOString(), // You can enhance this with real publish date
+      };
+      
+      console.log('💾 Saving queue item:', queueItem);
+      await LocalStorageService.addToQueue(queueItem);
+      
+      setIsVideoQueued(true);
+      Alert.alert('Success', 'Video added to queue!', [
+        { text: 'Stay Here', style: 'cancel' },
+        { 
+          text: 'Go to Queue', 
+          onPress: () => {
+            // Navigate back to main tabs and then to Queue tab
+            (navigation as any).navigate('MainTabs', { screen: 'Queue' });
+          }
+        }
+      ]);
+    } catch (error) {
+      console.error('❌ Failed to add video to queue:', error);
+      Alert.alert('Error', 'Failed to add video to queue');
+    }
+  };
+
+  const extractVideoId = (url: string) => {
+    console.log('🔍 Extracting video ID from URL:', url);
+    
+    // Handle various YouTube URL formats
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
+      /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+      /youtu\.be\/([^&\n?#]+)/,
+      /youtube\.com\/embed\/([^&\n?#]+)/,
+      /youtube\.com\/v\/([^&\n?#]+)/
+    ];
+    
+    for (let i = 0; i < patterns.length; i++) {
+      const pattern = patterns[i];
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        console.log('✅ Extracted video ID:', match[1], 'using pattern', i + 1);
+        return match[1];
+      }
+    }
+    
+    console.error('❌ No video ID found in URL:', url);
+    console.error('🔍 URL patterns tried:', patterns.length);
+    return '';
+  };
+
 
 
   const handleCloseCaptions = () => {
@@ -364,6 +474,25 @@ const YouTubeWebViewScreen: React.FC = () => {
         </View>
         
         <View style={styles.headerRight}>
+          {isVideoPage && (
+            <TouchableOpacity 
+              style={[
+                styles.queueButton,
+                isVideoQueued && styles.queueButtonActive
+              ]}
+              onPress={handleAddToQueue}
+            >
+              <Ionicons 
+                name={isVideoQueued ? "checkmark" : "add"} 
+                size={18} 
+                color={isVideoQueued ? '#FFFFFF' : '#FFFFFF'} 
+              />
+              <Text style={styles.queueButtonText}>
+                {isVideoQueued ? 'Queued' : 'Queue'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
           <TouchableOpacity 
             style={[
               styles.captionButton,

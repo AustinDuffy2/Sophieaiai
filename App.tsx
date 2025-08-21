@@ -8,11 +8,11 @@ import { useColorScheme } from 'react-native';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
-import ExploreScreen from './src/screens/ExploreScreen';
 import TranscriptionsScreen from './src/screens/TranscriptionsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import YouTubeWebViewScreen from './src/screens/YouTubeWebViewScreen';
 import VideoDetailScreen from './src/screens/VideoDetailScreen';
+import QueueScreen from './src/screens/QueueScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -47,6 +47,13 @@ function MainStack() {
           headerShown: false 
         }}
       />
+      <Stack.Screen 
+        name="ProfileScreen" 
+        component={ProfileScreen}
+        options={{ 
+          headerShown: false 
+        }}
+      />
 
     </Stack.Navigator>
   );
@@ -63,17 +70,15 @@ function MainTabNavigator() {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
-                      if (route.name === 'Home') {
-              iconName = focused ? 'home' : 'home-outline';
-            } else if (route.name === 'Explore') {
-              iconName = focused ? 'search' : 'search-outline';
-            } else if (route.name === 'Transcriptions') {
-              iconName = focused ? 'document-text' : 'document-text-outline';
-            } else if (route.name === 'Profile') {
-              iconName = focused ? 'person' : 'person-outline';
-            } else {
-              iconName = 'help-outline';
-            }
+          if (route.name === 'Home') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Queue') {
+            iconName = focused ? 'list' : 'list-outline';
+          } else if (route.name === 'Transcriptions') {
+            iconName = focused ? 'document-text' : 'document-text-outline';
+          } else {
+            iconName = 'help-outline';
+          }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -101,23 +106,18 @@ function MainTabNavigator() {
       <Tab.Screen 
         name="Home" 
         component={HomeScreen}
-        options={{ title: 'Home' }}
+        options={{ headerShown: false }}
       />
-              <Tab.Screen 
-          name="Explore" 
-          component={ExploreScreen}
-          options={{ title: 'Explore' }}
-        />
-        <Tab.Screen 
-          name="Transcriptions" 
-          component={TranscriptionsScreen}
-          options={{ title: 'Transcriptions' }}
-        />
-        <Tab.Screen 
-          name="Profile" 
-          component={ProfileScreen}
-          options={{ title: 'Profile' }}
-        />
+      <Tab.Screen 
+        name="Queue" 
+        component={QueueScreen}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen 
+        name="Transcriptions" 
+        component={TranscriptionsScreen}
+        options={{ headerShown: false }}
+      />
     </Tab.Navigator>
   );
 }

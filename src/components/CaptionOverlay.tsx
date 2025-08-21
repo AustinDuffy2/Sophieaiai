@@ -29,6 +29,7 @@ interface CaptionOverlayProps {
   videoTitle?: string;
   onSave?: () => void;
   isSaved?: boolean;
+  isGenerating?: boolean;
 }
 
 const CaptionOverlay: React.FC<CaptionOverlayProps> = ({ 
@@ -38,7 +39,8 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
   videoUrl,
   videoTitle,
   onSave,
-  isSaved = false
+  isSaved = false,
+  isGenerating = false
 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -291,7 +293,23 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
             </TouchableOpacity>
           </View>
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No captions available</Text>
+            {isGenerating ? (
+              <>
+                <Ionicons 
+                  name="hourglass-outline" 
+                  size={48} 
+                  color={isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)'} 
+                />
+                <Text style={[styles.emptyStateText, { marginTop: 16, fontSize: 18, fontWeight: '600' }]}>
+                  Captions Generating
+                </Text>
+                <Text style={[styles.emptyStateText, { marginTop: 8, fontSize: 14 }]}>
+                  Thanks for your patience
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.emptyStateText}>No captions available</Text>
+            )}
           </View>
         </View>
       </Animated.View>

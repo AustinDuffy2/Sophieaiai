@@ -65,9 +65,11 @@ const VideoDetailScreen: React.FC = () => {
       color: isDark ? '#FFFFFF' : '#000000',
     },
     openaiIcon: {
-      padding: 8,
-      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
-      borderRadius: 8,
+      padding: 10,
+      backgroundColor: 'rgba(0, 122, 255, 0.1)',
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(0, 122, 255, 0.2)',
     },
     content: {
       flex: 1,
@@ -306,9 +308,9 @@ const VideoDetailScreen: React.FC = () => {
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.openaiIcon} onPress={handleOpenAIPress}>
             <Ionicons 
-              name="logo-openai" 
+              name="analytics-outline" 
               size={20} 
-              color={isDark ? '#10A37F' : '#10A37F'} 
+              color={isDark ? '#007AFF' : '#007AFF'} 
             />
           </TouchableOpacity>
         </View>

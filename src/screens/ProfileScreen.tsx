@@ -8,10 +8,50 @@ import {
   useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { Alert } from 'react-native';
+import LocalStorageService from '../services/localStorage';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  const handleClearCache = () => {
+    Alert.alert(
+      'Clear All Data',
+      'This will permanently delete all your saved transcriptions and queued videos. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear all transcriptions
+              await LocalStorageService.clearAllTranscriptions();
+              // Clear all queued videos
+              await LocalStorageService.clearQueuedVideos();
+              
+              Alert.alert(
+                'Success',
+                'All data has been cleared successfully!',
+                [{ text: 'OK' }]
+              );
+            } catch (error) {
+              console.error('Failed to clear cache:', error);
+              Alert.alert(
+                'Error',
+                'Failed to clear data. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -26,6 +66,10 @@ const ProfileScreen: React.FC = () => {
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: 24,
+    },
+    backButton: {
+      padding: 8,
+      marginRight: 12,
     },
     title: {
       fontSize: 28,
@@ -116,9 +160,19 @@ const ProfileScreen: React.FC = () => {
   });
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons 
+              name="arrow-back" 
+              size={24} 
+              color={isDark ? '#FFFFFF' : '#000000'} 
+            />
+          </TouchableOpacity>
           <Text style={styles.title}>Profile</Text>
           <TouchableOpacity>
             <Ionicons 
@@ -221,6 +275,27 @@ const ProfileScreen: React.FC = () => {
           />
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.menuItem} onPress={handleClearCache}>
+          <View style={styles.menuItemLeft}>
+            <View style={styles.menuIcon}>
+              <Ionicons 
+                name="trash-outline" 
+                size={20} 
+                color="#FF3B30" 
+              />
+            </View>
+            <View>
+              <Text style={[styles.menuText, { color: '#FF3B30' }]}>Clear All Data</Text>
+              <Text style={styles.menuSubtext}>Delete all transcriptions and queued videos</Text>
+            </View>
+          </View>
+          <Ionicons 
+            name="chevron-forward" 
+            size={20} 
+            color={isDark ? '#8E8E93' : '#6D6D70'} 
+          />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.menuItem}>
           <View style={styles.menuItemLeft}>
             <View style={styles.menuIcon}>
@@ -263,7 +338,7 @@ const ProfileScreen: React.FC = () => {
           />
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
