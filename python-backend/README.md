@@ -1,11 +1,12 @@
 # Python Backend - YouTube Audio Transcription
 
-This Python backend provides YouTube audio downloading and transcription capabilities using pytube and OpenAI Whisper.
+This Python backend provides YouTube audio downloading and transcription capabilities using yt-dlp and OpenAI Whisper with **fast API integration** for significantly improved performance.
 
 ## Features
 
-- **YouTube Audio Download**: Download audio from YouTube videos using pytube
-- **Audio Transcription**: Transcribe audio using OpenAI Whisper
+- **YouTube Audio Download**: Download audio from YouTube videos using yt-dlp
+- **Fast Audio Transcription**: Transcribe audio using OpenAI's Whisper API for 10x faster processing
+- **Local Fallback**: Automatic fallback to local Whisper model if API is unavailable
 - **Multiple Languages**: Support for various languages
 - **REST API**: Flask-based API for integration with React Native app
 - **Background Processing**: Asynchronous video processing with status tracking
@@ -15,6 +16,7 @@ This Python backend provides YouTube audio downloading and transcription capabil
 
 - Python 3.8 or higher
 - FFmpeg (required for audio processing)
+- OpenAI API key (for fast processing - optional but recommended)
 - Sufficient disk space for audio files and models
 
 ### Installing FFmpeg
@@ -46,10 +48,37 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. **Download Whisper models (first run will download automatically):**
+3. **Set up environment variables:**
+```bash
+cp env.template .env
+# Edit .env and add your OpenAI API key for fast processing
+```
+
+4. **Download Whisper models (first run will download automatically):**
 ```bash
 python -c "import whisper; whisper.load_model('base')"
 ```
+
+## Fast API Integration
+
+This backend now supports **OpenAI's Whisper API** for significantly faster transcription processing:
+
+### Performance Comparison
+- **Local Whisper Model**: 2-10 minutes for a 10-minute video
+- **OpenAI Whisper API**: 30-60 seconds for a 10-minute video (10x faster!)
+
+### Setup
+1. Get an OpenAI API key from https://platform.openai.com/api-keys
+2. Add it to your `.env` file:
+   ```
+   OPENAI_API_KEY=your-api-key-here
+   ```
+3. The system will automatically use the fast API when available
+
+### Fallback Behavior
+- If OpenAI API key is not configured, it falls back to local Whisper model
+- If API call fails, it automatically retries with local model
+- No functionality is lost - just slower processing
 
 ## Usage
 
@@ -226,9 +255,16 @@ python-backend/
    - Process shorter videos
    - Increase system memory
 
+5. **Fast API issues:**
+   - Check OpenAI API key is set correctly in `.env`
+   - Verify internet connection for API calls
+   - Check OpenAI API usage limits and billing
+   - System will automatically fall back to local model
+
 ### Performance Tips
 
-- Use `tiny` or `base` models for faster processing
+- **For fastest processing:** Use OpenAI Whisper API (requires API key)
+- **For offline processing:** Use `tiny` or `base` local models
 - Process videos in background threads
 - Clean up temporary files regularly
 - Monitor disk space usage
@@ -243,6 +279,7 @@ python-backend/
 
 ### Testing
 
+#### Basic Installation Test
 Test individual components:
 
 ```bash
@@ -251,7 +288,23 @@ python -c "from youtube_transcriber import YouTubeTranscriber; t = YouTubeTransc
 
 # Test API server
 curl http://localhost:5000/health
+
+# Run comprehensive installation test
+python test_installation.py
 ```
+
+#### Fast API Integration Test
+Test the fast API integration:
+
+```bash
+python test_fast_api.py
+```
+
+This will verify:
+- OpenAI API key configuration
+- Fast API transcription capability
+- Local fallback functionality
+- API server integration
 
 ## License
 

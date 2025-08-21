@@ -30,6 +30,7 @@ interface CaptionOverlayProps {
   isGenerating?: boolean;
   currentTime?: number;
   onSeekToTime?: (time: number) => void;
+  onRegenerateCaptions?: () => void;
 }
 
 type OverlayHeight = 'collapsed' | 'medium' | 'expanded';
@@ -42,7 +43,8 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
   videoTitle,
   isGenerating = false,
   currentTime = 0,
-  onSeekToTime
+  onSeekToTime,
+  onRegenerateCaptions
 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -147,6 +149,15 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    regenerateButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: '#FF9500',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 8,
     },
     controlsContainer: {
       flexDirection: 'row',
@@ -484,6 +495,19 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
             </View>
           </View>
           <View style={styles.headerRight}>
+            {onRegenerateCaptions && (
+              <TouchableOpacity 
+                style={[styles.regenerateButton, isGenerating && { opacity: 0.5 }]} 
+                onPress={onRegenerateCaptions}
+                disabled={isGenerating}
+              >
+                <Ionicons 
+                  name={isGenerating ? "hourglass-outline" : "refresh"} 
+                  size={18} 
+                  color="#FFFFFF" 
+                />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons 
                 name="close" 

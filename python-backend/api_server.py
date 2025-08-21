@@ -35,9 +35,9 @@ def process_pending_tasks():
                     print(f"   Updating status to 'processing'...")
                     supabase_service.update_task_status(task['id'], 'processing')
                     
-                    # Initialize transcriber
-                    print(f"   Initializing transcriber...")
-                    transcriber = YouTubeTranscriber(model_size="base")
+                    # Initialize transcriber with fast API enabled and optimized for speed
+                    print(f"   Initializing transcriber with fast API and speed optimizations...")
+                    transcriber = YouTubeTranscriber(model_size="tiny", use_fast_api=True)
                     
                     # Process video
                     print(f"   Processing video...")
@@ -121,8 +121,8 @@ def process_video():
                 tasks[task_id]['message'] = 'Processing video...'
                 tasks[task_id]['progress'] = 25
                 
-                # Initialize transcriber
-                transcriber = YouTubeTranscriber(model_size="base")
+                # Initialize transcriber with fast API enabled and optimized for speed
+                transcriber = YouTubeTranscriber(model_size="tiny", use_fast_api=True)
                 
                 tasks[task_id]['progress'] = 50
                 tasks[task_id]['message'] = 'Transcribing audio...'

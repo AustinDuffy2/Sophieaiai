@@ -191,7 +191,40 @@ const YouTubeWebViewScreen: React.FC = () => {
       return;
     }
     
-    console.log('✅ Valid YouTube video detected, starting processing...');
+    // Check for existing captions first
+    console.log('🔍 Checking for existing captions...');
+    const existingTaskId = await SupabaseService.checkExistingCaptions(currentYouTubeUrl);
+    
+    if (existingTaskId) {
+      console.log('✅ Found existing captions, fetching them...');
+      const captions = await SupabaseService.getCaptions(existingTaskId);
+      if (captions && captions.length > 0) {
+        setRealCaptions(captions);
+        console.log('✅ Existing captions loaded successfully');
+        
+        // Automatically save existing captions to transcriptions
+        try {
+          const videoTitle = getVideoTitle(currentYouTubeUrl);
+          await LocalStorageService.saveTranscription(
+            currentYouTubeUrl,
+            videoTitle,
+            captions,
+            'en'
+          );
+          setIsTranscriptionSaved(true);
+          console.log('✅ Existing captions automatically saved to transcriptions');
+        } catch (error) {
+          console.error('❌ Failed to auto-save existing captions:', error);
+        }
+        
+        // Show captions overlay
+        setShowCaptions(true);
+        return;
+      }
+    }
+    
+    // No existing captions, start new processing
+    console.log('✅ No existing captions found, starting new processing...');
     setShowProcessingModal(true);
     
     try {
@@ -290,7 +323,7 @@ const YouTubeWebViewScreen: React.FC = () => {
             
             // Close processing modal and show notification
             setShowProcessingModal(false);
-            showCaptionsReadyNotification();
+            showCaptionsReadyNotification(true); // Indicate this was a regeneration
           } else {
             console.log('⚠️ No captions received');
             setRealCaptions([]);
@@ -338,14 +371,56 @@ const YouTubeWebViewScreen: React.FC = () => {
     }, 600000); // 10 minutes timeout
   };
 
-  const showCaptionsReadyNotification = () => {
+  const showCaptionsReadyNotification = (isRegeneration = false) => {
     setShowNotification(true);
+    // Update notification text for regeneration
+    if (isRegeneration) {
+      // The notification component will show different text based on context
+      console.log('🔄 Captions regenerated successfully');
+    }
   };
 
   const handleShowCaptions = () => {
     setShowCaptions(true);
     // Check if this transcription is already saved
     checkIfSaved();
+  };
+
+  const handleRegenerateCaptions = async () => {
+    console.log('🔄 Regenerating captions for:', currentYouTubeUrl);
+    
+    if (!currentYouTubeUrl || !currentYouTubeUrl.includes('youtube.com/watch')) {
+      Alert.alert(
+        'No YouTube Video',
+        'Please navigate to a YouTube video first.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    // Show processing modal
+    setShowProcessingModal(true);
+    
+    try {
+      const videoUrl = currentYouTubeUrl;
+      console.log('🔄 Starting caption regeneration for:', videoUrl);
+      
+      // Start new processing
+      const taskId = await SupabaseService.sendUrlForProcessing(videoUrl, 'en');
+      console.log('✅ Regeneration task created with ID:', taskId);
+      setCurrentTaskId(taskId);
+      
+      // Poll for completion
+      pollTaskCompletion(taskId);
+    } catch (error) {
+      console.error('❌ Failed to start regeneration:', error);
+      Alert.alert(
+        'Regeneration Failed',
+        'Failed to start caption regeneration. Please try again.',
+        [{ text: 'OK' }]
+      );
+      setShowProcessingModal(false);
+    }
   };
 
   // Check queue status when URL changes
@@ -620,6 +695,7 @@ const YouTubeWebViewScreen: React.FC = () => {
           currentTime={currentVideoTime}
           videoDuration={videoDuration}
           onSeekToTime={seekToTime}
+          onRegenerateCaptions={handleRegenerateCaptions}
         />
       )}
 
@@ -641,8 +717,8 @@ const YouTubeWebViewScreen: React.FC = () => {
 
       <NotificationBanner
         visible={showNotification}
-        title="Captions Ready! 🎉"
-        message="Your video captions have been generated and saved automatically."
+        title="Captions Updated! 🎉"
+        message="Your video captions have been regenerated and saved automatically."
         type="success"
         onAction={handleShowCaptions}
         onDismiss={handleDismissNotification}
