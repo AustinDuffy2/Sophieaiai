@@ -13,11 +13,21 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SavedTranscription } from '../services/localStorage';
+import LocalStorageService from '../services/localStorage';
 import AISummaryOverlay from '../components/AISummaryOverlay';
+import NotificationBanner from '../components/NotificationBanner';
+import ProcessingModal from '../components/ProcessingModal';
+import { api } from '../services/api';
 
 const { width, height } = Dimensions.get('window');
 
-interface VideoDetail extends SavedTranscription {}
+interface VideoDetail extends SavedTranscription {
+  thumbnail?: string;
+  duration?: string;
+  channelTitle?: string;
+  viewCount?: string;
+  publishedAt?: string;
+}
 
 const VideoDetailScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -25,12 +35,62 @@ const VideoDetailScreen: React.FC = () => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  const { videoDetail } = route.params as {
-    videoDetail: VideoDetail;
-  };
+  console.log('🎬 VideoDetailScreen mounted with params:', route.params);
+  
+  const params = route.params as { videoDetail: VideoDetail } | undefined;
+  const videoDetail = params?.videoDetail;
+
+  // Handle case where videoDetail is not provided
+  if (!videoDetail) {
+    console.error('❌ No videoDetail provided in route params');
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Ionicons 
+                name="arrow-back" 
+                size={24} 
+                color={isDark ? '#FFFFFF' : '#000000'} 
+              />
+            </TouchableOpacity>
+            <Text style={styles.title}>Error</Text>
+          </View>
+        </View>
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={64}
+            color={isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'}
+            style={{ marginBottom: 16 }}
+          />
+          <Text style={[styles.title, { textAlign: 'center', marginBottom: 8 }]}>
+            Video Details Not Found
+          </Text>
+          <Text style={[styles.metaLabel, { textAlign: 'center' }]}>
+            The video information could not be loaded.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const [selectedCaption, setSelectedCaption] = useState<any | null>(null);
   const [showAISummary, setShowAISummary] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showProcessingModal, setShowProcessingModal] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<any>(null);
+  const [notification, setNotification] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'info' | 'warning' | 'error';
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   const styles = StyleSheet.create({
     container: {
@@ -256,22 +316,34 @@ const VideoDetailScreen: React.FC = () => {
   };
 
   const handleDeleteVideo = () => {
+    const isQueuedVideo = videoDetail.captions.length === 0;
+    const alertTitle = isQueuedVideo ? 'Remove from Queue' : 'Delete Video';
+    const alertMessage = isQueuedVideo 
+      ? 'Are you sure you want to remove this video from the queue?'
+      : 'Are you sure you want to delete this video and its transcriptions? This action cannot be undone.';
+    
     Alert.alert(
-      'Delete Video',
-      'Are you sure you want to delete this video and its transcriptions? This action cannot be undone.',
+      alertTitle,
+      alertMessage,
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Delete',
+          text: isQueuedVideo ? 'Remove' : 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete from Supabase
-              // await SupabaseService.deleteSavedTranscription(videoDetail.id);
-              Alert.alert('Success', 'Video deleted successfully');
+              if (isQueuedVideo) {
+                // Remove from queue
+                await LocalStorageService.removeQueuedVideo(videoDetail.id);
+                Alert.alert('Success', 'Video removed from queue');
+              } else {
+                // Delete saved transcription
+                await LocalStorageService.deleteSavedTranscription(videoDetail.id);
+                Alert.alert('Success', 'Video deleted successfully');
+              }
               navigation.goBack();
             } catch (error) {
               console.error('Failed to delete video:', error);
@@ -291,6 +363,117 @@ const VideoDetailScreen: React.FC = () => {
     setShowAISummary(true);
   };
 
+  const handleTranscribeVideo = async () => {
+    if (isTranscribing) return;
+    
+    console.log('🎤 Transcribe button clicked!');
+    console.log('📋 Video detail:', videoDetail);
+    
+    setIsTranscribing(true);
+    setShowProcessingModal(true);
+    setProcessingStatus({ status: 'pending', message: 'Initializing transcription...' });
+    
+    try {
+      console.log('🎤 Starting transcription for video:', videoDetail.video_title);
+      console.log('🔗 Video URL:', videoDetail.video_url);
+      console.log('🔍 Full video detail object:', JSON.stringify(videoDetail, null, 2));
+      
+      // Test backend connection first
+      console.log('🔍 Testing backend connection...');
+      const isHealthy = await api.healthCheck();
+      console.log('🏥 Backend health check result:', isHealthy);
+      
+      if (!isHealthy) {
+        setProcessingStatus({ 
+          status: 'failed', 
+          error: 'Backend server is not running. Please run: npm run start-backend' 
+        });
+        throw new Error('Backend server is not running. Please run: npm run start-backend');
+      }
+      
+      // Start the processing and get task ID
+      console.log('🚀 Calling api.processVideo...');
+      const taskId = await api.processVideo(videoDetail.video_url);
+      console.log('📋 Processing started with task ID:', taskId);
+      
+      setProcessingStatus({ status: 'processing', message: 'Processing video...' });
+      
+      // Poll for completion with progress updates
+      const finalStatus = await api.pollUntilComplete(taskId, (status) => {
+        console.log('📊 Processing status update:', status);
+        setProcessingStatus(status);
+      });
+      
+      if (finalStatus.status === 'completed') {
+        console.log('✅ Processing completed, getting captions...');
+        setProcessingStatus({ status: 'completed', message: 'Getting captions...' });
+        
+        // Get the captions
+        const captions = await api.getCaptions(taskId);
+        console.log('📝 Captions retrieved:', captions.length);
+        
+        // Save the transcription
+        await LocalStorageService.saveTranscription(
+          videoDetail.video_url,
+          videoDetail.video_title,
+          captions,
+          'en'
+        );
+        
+        console.log('💾 Transcription saved to local storage');
+        
+        // Show success notification
+        setNotification({
+          visible: true,
+          title: 'Transcription Complete',
+          message: `${captions.length} captions generated successfully!`,
+          type: 'success'
+        });
+        
+        // Close processing modal after a short delay
+        setTimeout(() => {
+          setShowProcessingModal(false);
+          
+          // Navigate back to QueueScreen with the video that now has captions
+          setTimeout(() => {
+            // If this was a queued video, navigate back to QueueScreen
+            if (videoDetail.captions.length === 0) {
+              // This was a queued video that now has captions
+              console.log('🎬 Navigating back to QueueScreen with transcribed video');
+              navigation.goBack();
+            } else {
+              // This was already a saved transcription, just go back
+              navigation.goBack();
+            }
+          }, 1000);
+        }, 2000);
+      } else {
+        throw new Error(finalStatus.error || 'Processing failed');
+      }
+    } catch (error) {
+      console.error('❌ Transcription failed:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
+      
+      setProcessingStatus({ 
+        status: 'failed', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      
+      setNotification({
+        visible: true,
+        title: 'Transcription Failed',
+        message: error instanceof Error ? error.message : 'Failed to transcribe the video. Please try again.',
+        type: 'error'
+      });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -306,7 +489,38 @@ const VideoDetailScreen: React.FC = () => {
         </View>
         
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.openaiIcon} onPress={handleOpenAIPress}>
+          {videoDetail.captions.length === 0 && (
+            <TouchableOpacity 
+              style={[styles.openaiIcon, { marginRight: 8 }]} 
+              onPress={handleTranscribeVideo}
+              disabled={isTranscribing}
+            >
+              <Ionicons 
+                name={isTranscribing ? "hourglass-outline" : "mic-outline"} 
+                size={20} 
+                color={isDark ? '#FF6B35' : '#FF6B35'} 
+              />
+              {isTranscribing && (
+                <View style={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -2,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: '#FF6B35',
+                }} />
+              )}
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity 
+            style={[
+              styles.openaiIcon, 
+              videoDetail.captions.length === 0 && { opacity: 0.5 }
+            ]} 
+            onPress={videoDetail.captions.length > 0 ? handleOpenAIPress : undefined}
+            disabled={videoDetail.captions.length === 0}
+          >
             <Ionicons 
               name="analytics-outline" 
               size={20} 
@@ -332,6 +546,30 @@ const VideoDetailScreen: React.FC = () => {
           </View>
 
           <View style={styles.videoMeta}>
+            {videoDetail.channelTitle && (
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Channel:</Text>
+                <Text style={styles.metaValue}>{videoDetail.channelTitle}</Text>
+              </View>
+            )}
+            {videoDetail.duration && (
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Duration:</Text>
+                <Text style={styles.metaValue}>{videoDetail.duration}</Text>
+              </View>
+            )}
+            {videoDetail.viewCount && (
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Views:</Text>
+                <Text style={styles.metaValue}>{videoDetail.viewCount}</Text>
+              </View>
+            )}
+            {videoDetail.publishedAt && (
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Published:</Text>
+                <Text style={styles.metaValue}>{formatDate(videoDetail.publishedAt)}</Text>
+              </View>
+            )}
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>Language:</Text>
               <Text style={styles.metaValue}>{videoDetail.language}</Text>
@@ -355,11 +593,15 @@ const VideoDetailScreen: React.FC = () => {
               <Text style={styles.statLabel}>Captions</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{formatTime(getVideoDuration())}</Text>
+              <Text style={styles.statValue}>
+                {videoDetail.captions.length > 0 ? formatTime(getVideoDuration()) : (videoDetail.duration || 'N/A')}
+              </Text>
               <Text style={styles.statLabel}>Duration</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{getWordCount()}</Text>
+              <Text style={styles.statValue}>
+                {videoDetail.captions.length > 0 ? getWordCount() : 'N/A'}
+              </Text>
               <Text style={styles.statLabel}>Words</Text>
             </View>
           </View>
@@ -368,21 +610,38 @@ const VideoDetailScreen: React.FC = () => {
         {/* Captions Section */}
         <View style={styles.captionsSection}>
           <Text style={styles.sectionTitle}>Transcription</Text>
-          {videoDetail.captions.map((caption, index) => (
-            <TouchableOpacity
-              key={caption.id || index}
-              style={[
-                styles.captionItem,
-                selectedCaption?.id === caption.id && styles.captionItemSelected
-              ]}
-              onPress={() => handleCaptionPress(caption)}
-            >
-              <Text style={styles.captionText}>{caption.text}</Text>
-              <Text style={styles.captionTime}>
-                {formatTime(caption.startTime)} - {formatTime(caption.endTime)}
+          {videoDetail.captions.length > 0 ? (
+            videoDetail.captions.map((caption, index) => (
+              <TouchableOpacity
+                key={caption.id || index}
+                style={[
+                  styles.captionItem,
+                  selectedCaption?.id === caption.id && styles.captionItemSelected
+                ]}
+                onPress={() => handleCaptionPress(caption)}
+              >
+                <Text style={styles.captionText}>{caption.text}</Text>
+                <Text style={styles.captionTime}>
+                  {formatTime(caption.startTime)} - {formatTime(caption.endTime)}
+                </Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={[styles.captionItem, { alignItems: 'center', paddingVertical: 32 }]}>
+              <Ionicons
+                name="document-text-outline"
+                size={48}
+                color={isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'}
+                style={{ marginBottom: 16 }}
+              />
+              <Text style={[styles.captionText, { textAlign: 'center', marginBottom: 8 }]}>
+                No transcription available
               </Text>
-            </TouchableOpacity>
-          ))}
+              <Text style={[styles.captionTime, { textAlign: 'center' }]}>
+                This video hasn't been transcribed yet
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Action Buttons */}
@@ -395,8 +654,14 @@ const VideoDetailScreen: React.FC = () => {
             style={[styles.actionButton, styles.deleteButton]} 
             onPress={handleDeleteVideo}
           >
-            <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Delete</Text>
+            <Ionicons 
+              name={videoDetail.captions.length === 0 ? "close" : "trash-outline"} 
+              size={16} 
+              color="#FFFFFF" 
+            />
+            <Text style={styles.actionButtonText}>
+              {videoDetail.captions.length === 0 ? 'Remove from Queue' : 'Delete'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -407,6 +672,26 @@ const VideoDetailScreen: React.FC = () => {
         onClose={() => setShowAISummary(false)}
         captions={videoDetail.captions}
         videoTitle={videoDetail.video_title}
+      />
+
+      {/* Notification Banner */}
+      <NotificationBanner
+        visible={notification.visible}
+        title={notification.title}
+        message={notification.message}
+        type={notification.type}
+        onDismiss={() => setNotification(prev => ({ ...prev, visible: false }))}
+        autoHide={true}
+        duration={5000}
+      />
+      
+      {/* Processing Modal */}
+      <ProcessingModal
+        visible={showProcessingModal}
+        onClose={() => setShowProcessingModal(false)}
+        onComplete={() => setShowProcessingModal(false)}
+        selectedLanguage="English"
+        processingStatus={processingStatus}
       />
     </SafeAreaView>
   );

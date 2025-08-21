@@ -36,7 +36,30 @@ const YouTubeWebViewScreen: React.FC = () => {
   const [showNotification, setShowNotification] = useState(false);
   const [isTranscriptionSaved, setIsTranscriptionSaved] = useState(false);
   const [isVideoQueued, setIsVideoQueued] = useState(false);
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
   const webViewRef = useRef<WebView>(null);
+
+  const seekToTime = (time: number) => {
+    if (webViewRef.current) {
+      console.log(`🎯 Seeking video to time: ${time}s`);
+      const seekScript = `
+        (function() {
+          try {
+            const video = document.querySelector('video');
+            if (video && video.readyState >= 2) {
+              video.currentTime = ${time};
+              console.log('Video seeked to:', ${time});
+              // Don't auto-play, let user control playback
+            }
+          } catch (e) {
+            console.error('Seek failed:', e);
+          }
+        })();
+      `;
+      webViewRef.current.injectJavaScript(seekScript);
+    }
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -72,12 +95,12 @@ const YouTubeWebViewScreen: React.FC = () => {
     },
     captionButton: {
       backgroundColor: '#1DA1F2',
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      flexDirection: 'row',
+      borderRadius: 20,
+      width: 40,
+      height: 40,
       alignItems: 'center',
-      marginRight: 12,
+      justifyContent: 'center',
+      marginRight: 8,
       shadowColor: '#1DA1F2',
       shadowOffset: {
         width: 0,
@@ -91,23 +114,14 @@ const YouTubeWebViewScreen: React.FC = () => {
       backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
       opacity: 0.6,
     },
-    captionButtonText: {
-      color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '600',
-      marginLeft: 6,
-    },
-    captionButtonTextDisabled: {
-      color: isDark ? '#8E8E93' : '#8E8E93',
-    },
     queueButton: {
       backgroundColor: '#FF3B30',
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      flexDirection: 'row',
+      borderRadius: 20,
+      width: 40,
+      height: 40,
       alignItems: 'center',
-      marginRight: 12,
+      justifyContent: 'center',
+      marginRight: 8,
       shadowColor: '#FF3B30',
       shadowOffset: {
         width: 0,
@@ -120,14 +134,13 @@ const YouTubeWebViewScreen: React.FC = () => {
     queueButtonActive: {
       backgroundColor: '#34C759',
     },
-    queueButtonText: {
-      color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '600',
-      marginLeft: 6,
-    },
     closeButton: {
-      padding: 8,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     webviewContainer: {
       flex: 1,
@@ -152,22 +165,7 @@ const YouTubeWebViewScreen: React.FC = () => {
       color: isDark ? '#FFFFFF' : '#000000',
       marginTop: 12,
     },
-    urlIndicator: {
-      position: 'absolute',
-      top: 8,
-      left: 8,
-      right: 8,
-      backgroundColor: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      zIndex: 999,
-    },
-    urlText: {
-      fontSize: 12,
-      color: isDark ? '#FFFFFF' : '#000000',
-      textAlign: 'center',
-    },
+
   });
 
   const handleBack = () => {
@@ -210,6 +208,22 @@ const YouTubeWebViewScreen: React.FC = () => {
           if (captions && captions.length > 0) {
             setRealCaptions(captions);
             console.log('✅ Existing captions loaded successfully');
+            
+            // Automatically save existing captions to transcriptions
+            try {
+              const videoTitle = getVideoTitle(videoUrl);
+              await LocalStorageService.saveTranscription(
+                videoUrl,
+                videoTitle,
+                captions,
+                'en'
+              );
+              setIsTranscriptionSaved(true);
+              console.log('✅ Existing captions automatically saved to transcriptions');
+            } catch (error) {
+              console.error('❌ Failed to auto-save existing captions:', error);
+            }
+            
             setShowProcessingModal(false);
             showCaptionsReadyNotification();
             return;
@@ -258,6 +272,22 @@ const YouTubeWebViewScreen: React.FC = () => {
           if (captions && captions.length > 0) {
             setRealCaptions(captions);
             console.log('✅ Real captions set successfully');
+            
+            // Automatically save captions to transcriptions
+            try {
+              const videoTitle = getVideoTitle(videoUrl);
+              await LocalStorageService.saveTranscription(
+                videoUrl,
+                videoTitle,
+                captions,
+                'en'
+              );
+              setIsTranscriptionSaved(true);
+              console.log('✅ Captions automatically saved to transcriptions');
+            } catch (error) {
+              console.error('❌ Failed to auto-save captions:', error);
+            }
+            
             // Close processing modal and show notification
             setShowProcessingModal(false);
             showCaptionsReadyNotification();
@@ -329,28 +359,7 @@ const YouTubeWebViewScreen: React.FC = () => {
     setShowNotification(false);
   };
 
-  const handleSaveTranscription = async () => {
-    try {
-      if (!currentYouTubeUrl || realCaptions.length === 0) {
-        Alert.alert('Error', 'No captions available to save');
-        return;
-      }
 
-      const videoTitle = getVideoTitle(currentYouTubeUrl);
-      await LocalStorageService.saveTranscription(
-        currentYouTubeUrl,
-        videoTitle,
-        realCaptions,
-        'en'
-      );
-      
-      setIsTranscriptionSaved(true);
-      Alert.alert('Success', 'Transcription saved to Transcriptions screen!');
-    } catch (error) {
-      console.error('Failed to save transcription:', error);
-      Alert.alert('Error', 'Failed to save transcription');
-    }
-  };
 
   const getVideoTitle = (url: string) => {
     try {
@@ -470,7 +479,6 @@ const YouTubeWebViewScreen: React.FC = () => {
               color={isDark ? '#FFFFFF' : '#000000'} 
             />
           </TouchableOpacity>
-          <Text style={styles.title}>YouTube</Text>
         </View>
         
         <View style={styles.headerRight}>
@@ -484,12 +492,9 @@ const YouTubeWebViewScreen: React.FC = () => {
             >
               <Ionicons 
                 name={isVideoQueued ? "checkmark" : "add"} 
-                size={18} 
-                color={isVideoQueued ? '#FFFFFF' : '#FFFFFF'} 
+                size={20} 
+                color="#FFFFFF" 
               />
-              <Text style={styles.queueButtonText}>
-                {isVideoQueued ? 'Queued' : 'Queue'}
-              </Text>
             </TouchableOpacity>
           )}
           
@@ -503,15 +508,9 @@ const YouTubeWebViewScreen: React.FC = () => {
           >
             <Ionicons 
               name="text-outline" 
-              size={18} 
+              size={20} 
               color={isVideoPage ? '#FFFFFF' : (isDark ? '#8E8E93' : '#8E8E93')} 
             />
-            <Text style={[
-              styles.captionButtonText,
-              !isVideoPage && styles.captionButtonTextDisabled
-            ]}>
-              {isVideoPage ? 'Captions' : 'Navigate to Video'}
-            </Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -539,13 +538,7 @@ const YouTubeWebViewScreen: React.FC = () => {
           </View>
         )}
         
-        {isVideoPage && (
-          <View style={styles.urlIndicator}>
-            <Text style={styles.urlText}>
-              🎬 Video detected - Captions available
-            </Text>
-          </View>
-        )}
+
         
         <WebView
           ref={webViewRef}
@@ -565,6 +558,56 @@ const YouTubeWebViewScreen: React.FC = () => {
             console.log('🌐 WebView URL changed:', url);
             console.log('🎬 Is YouTube video:', url.includes('youtube.com/watch'));
           }}
+          injectedJavaScript={`
+            (function() {
+              let lastTime = -1;
+              let lastDuration = 0;
+              
+              setInterval(function() {
+                try {
+                  const video = document.querySelector('video');
+                  if (video && !isNaN(video.currentTime)) {
+                    const currentTime = video.currentTime;
+                    const duration = video.duration;
+                    
+                    // Send time updates more frequently for better sync
+                    if (Math.abs(currentTime - lastTime) >= 0.1) {
+                      lastTime = currentTime;
+                      window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'videoTime',
+                        time: currentTime,
+                        paused: video.paused
+                      }));
+                    }
+                    
+                    if (duration !== lastDuration && duration > 0 && !isNaN(duration)) {
+                      lastDuration = duration;
+                      window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'videoDuration',
+                        duration: duration
+                      }));
+                    }
+                  }
+                } catch (e) {
+                  // Ignore errors
+                }
+              }, 250); // Update every 250ms for better sync
+              
+              true;
+            })();
+          `}
+          onMessage={(event) => {
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === 'videoTime') {
+                setCurrentVideoTime(data.time);
+              } else if (data.type === 'videoDuration') {
+                setVideoDuration(data.duration);
+              }
+            } catch (e) {
+              // Ignore parsing errors
+            }
+          }}
         />
       </View>
       
@@ -574,8 +617,9 @@ const YouTubeWebViewScreen: React.FC = () => {
           onClose={handleCloseCaptions}
           videoUrl={currentYouTubeUrl}
           videoTitle={getVideoTitle(currentYouTubeUrl)}
-          onSave={handleSaveTranscription}
-          isSaved={isTranscriptionSaved}
+          currentTime={currentVideoTime}
+          videoDuration={videoDuration}
+          onSeekToTime={seekToTime}
         />
       )}
 
@@ -598,7 +642,7 @@ const YouTubeWebViewScreen: React.FC = () => {
       <NotificationBanner
         visible={showNotification}
         title="Captions Ready! 🎉"
-        message="Your video captions have been generated successfully."
+        message="Your video captions have been generated and saved automatically."
         type="success"
         onAction={handleShowCaptions}
         onDismiss={handleDismissNotification}

@@ -425,9 +425,18 @@ const ProcessingModal: React.FC<ProcessingModalProps> = ({
               })}
             </View>
             
-            {!isProcessing && (
+            {!isProcessing && processingStatus?.status === 'completed' && (
               <TouchableOpacity style={styles.completeButton} onPress={handleComplete}>
                 <Text style={styles.completeButtonText}>View Captions</Text>
+              </TouchableOpacity>
+            )}
+            
+            {!isProcessing && processingStatus?.status === 'failed' && (
+              <TouchableOpacity 
+                style={[styles.completeButton, { backgroundColor: '#007AFF' }]} 
+                onPress={handleComplete}
+              >
+                <Text style={styles.completeButtonText}>Retry</Text>
               </TouchableOpacity>
             )}
           </View>

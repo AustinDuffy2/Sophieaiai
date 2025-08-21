@@ -13,6 +13,8 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import YouTubeWebViewScreen from './src/screens/YouTubeWebViewScreen';
 import VideoDetailScreen from './src/screens/VideoDetailScreen';
 import QueueScreen from './src/screens/QueueScreen';
+import ViewAllQueuedScreen from './src/screens/ViewAllQueuedScreen';
+import MainQueueScreen from './src/screens/MainQueueScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -43,6 +45,20 @@ function MainStack() {
       <Stack.Screen 
         name="VideoDetailScreen" 
         component={VideoDetailScreen}
+        options={{ 
+          headerShown: false 
+        }}
+      />
+      <Stack.Screen 
+        name="QueueScreen" 
+        component={QueueScreen}
+        options={{ 
+          headerShown: false 
+        }}
+      />
+      <Stack.Screen 
+        name="ViewAllQueuedScreen" 
+        component={ViewAllQueuedScreen}
         options={{ 
           headerShown: false 
         }}
@@ -110,7 +126,7 @@ function MainTabNavigator() {
       />
       <Tab.Screen 
         name="Queue" 
-        component={QueueScreen}
+        component={MainQueueScreen}
         options={{ headerShown: false }}
       />
       <Tab.Screen 

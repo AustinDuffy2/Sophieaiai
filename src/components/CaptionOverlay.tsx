@@ -27,10 +27,12 @@ interface CaptionOverlayProps {
   videoDuration?: number;
   videoUrl?: string;
   videoTitle?: string;
-  onSave?: () => void;
-  isSaved?: boolean;
   isGenerating?: boolean;
+  currentTime?: number;
+  onSeekToTime?: (time: number) => void;
 }
+
+type OverlayHeight = 'collapsed' | 'medium' | 'expanded';
 
 const CaptionOverlay: React.FC<CaptionOverlayProps> = ({ 
   captions, 
@@ -38,21 +40,36 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
   videoDuration = 0,
   videoUrl,
   videoTitle,
-  onSave,
-  isSaved = false,
-  isGenerating = false
+  isGenerating = false,
+  currentTime = 0,
+  onSeekToTime
 }) => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   
-  const [currentTime, setCurrentTime] = useState(0);
   const [currentCaptionIndex, setCurrentCaptionIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
+  const [userScrolling, setUserScrolling] = useState(false);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const [overlayHeight, setOverlayHeight] = useState<OverlayHeight>('medium');
   
   const slideAnim = useRef(new Animated.Value(height)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const textAnim = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  const captionRefs = useRef<{ [key: number]: View | null }>({});
+
+  const getHeightForState = (state: OverlayHeight): number => {
+    switch (state) {
+      case 'collapsed':
+        return height * 0.25; // 25% of screen height
+      case 'medium':
+        return height * 0.5; // 50% of screen height
+      case 'expanded':
+        return height * 0.75; // 75% of screen height
+      default:
+        return height * 0.5;
+    }
+  };
 
   const styles = StyleSheet.create({
     overlay: {
@@ -63,58 +80,65 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
       zIndex: 1000,
     },
     container: {
-      backgroundColor: isDark ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+      backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.98)',
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      paddingTop: 24,
-      paddingBottom: 50,
+      paddingTop: 20,
+      paddingBottom: 40,
       paddingHorizontal: 20,
       shadowColor: '#000000',
       shadowOffset: {
         width: 0,
         height: -8,
       },
-      shadowOpacity: 0.25,
-      shadowRadius: 24,
+      shadowOpacity: 0.2,
+      shadowRadius: 20,
       elevation: 15,
       borderTopWidth: 1,
       borderTopColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      height: getHeightForState(overlayHeight),
+    },
+    dragHandle: {
+      width: 48,
+      height: 5,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+      borderRadius: 3,
+      alignSelf: 'center',
+      marginBottom: 20,
     },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 24,
-      paddingHorizontal: 4,
+      marginBottom: 16,
+      paddingHorizontal: 2,
     },
     headerLeft: {
       flexDirection: 'row',
       alignItems: 'center',
+      flex: 1,
     },
     headerRight: {
       flexDirection: 'row',
       alignItems: 'center',
     },
-    saveButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: isSaved ? '#34C759' : '#1DA1F2',
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      marginRight: 12,
-    },
-    saveButtonText: {
-      color: '#FFFFFF',
-      fontSize: 12,
-      fontWeight: '600',
-      marginLeft: 4,
-    },
+
     title: {
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: '700',
       color: isDark ? '#FFFFFF' : '#000000',
       letterSpacing: -0.5,
+    },
+    savedIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 12,
+    },
+    savedText: {
+      fontSize: 12,
+      color: '#34C759',
+      fontWeight: '600',
+      marginLeft: 4,
     },
     closeButton: {
       width: 36,
@@ -124,49 +148,74 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
       alignItems: 'center',
       justifyContent: 'center',
     },
-    mainCaptionContainer: {
-      minHeight: 100,
-      justifyContent: 'center',
+    controlsContainer: {
+      flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 20,
-      marginBottom: 24,
-    },
-    mainCaptionText: {
-      fontSize: 24,
-      fontWeight: '600',
-      color: isDark ? '#FFFFFF' : '#000000',
-      textAlign: 'center',
-      lineHeight: 32,
-      maxWidth: width - 80,
-      letterSpacing: -0.3,
+      justifyContent: 'space-between',
+      marginBottom: 12,
+      paddingHorizontal: 2,
     },
     progressContainer: {
-      marginBottom: 20,
-      paddingHorizontal: 4,
+      marginBottom: 8,
+      paddingHorizontal: 2,
     },
     progressBar: {
-      height: 4,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
-      borderRadius: 2,
+      height: 2,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      borderRadius: 1,
       overflow: 'hidden',
     },
     progressFill: {
       height: '100%',
       backgroundColor: '#1DA1F2',
-      borderRadius: 2,
+      borderRadius: 1,
     },
-    timeIndicator: {
+    progressInfo: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: 12,
+      marginTop: 4,
     },
-    timeText: {
-      fontSize: 13,
-      color: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
-      fontWeight: '600',
+    progressText: {
+      fontSize: 10,
+      color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+      fontWeight: '500',
+    },
+    captionCount: {
+      fontSize: 12,
+      color: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
+      fontWeight: '500',
+    },
+    autoScrollToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    autoScrollText: {
+      fontSize: 11,
+      color: isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)',
+      fontWeight: '500',
+      marginLeft: 4,
+    },
+    heightToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      marginLeft: 8,
+    },
+    heightToggleText: {
+      fontSize: 11,
+      color: isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)',
+      fontWeight: '500',
+      marginLeft: 4,
     },
     captionsList: {
-      maxHeight: 200,
+      flex: 1,
     },
     captionItem: {
       paddingVertical: 12,
@@ -175,46 +224,40 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
       marginBottom: 8,
       borderWidth: 1,
       borderColor: 'transparent',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
     },
     captionItemActive: {
       backgroundColor: isDark ? 'rgba(29, 161, 242, 0.15)' : 'rgba(29, 161, 242, 0.08)',
       borderColor: isDark ? 'rgba(29, 161, 242, 0.3)' : 'rgba(29, 161, 242, 0.2)',
+      borderLeftWidth: 4,
+      borderLeftColor: '#1DA1F2',
     },
     captionItemText: {
-      fontSize: 15,
-      color: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
-      lineHeight: 22,
-      fontWeight: '500',
+      fontSize: 13,
+      color: isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.75)',
+      lineHeight: 18,
+      fontWeight: '400',
     },
     captionItemTextActive: {
       color: isDark ? '#FFFFFF' : '#000000',
-      fontWeight: '600',
+      fontWeight: '500',
     },
     captionTime: {
-      fontSize: 12,
-      color: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
-      marginTop: 4,
+      fontSize: 10,
+      color: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.45)',
+      marginTop: 2,
       fontWeight: '500',
     },
     emptyState: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 40,
+      paddingVertical: 30,
     },
     emptyStateText: {
-      fontSize: 16,
+      fontSize: 14,
       color: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
       textAlign: 'center',
       fontWeight: '500',
-    },
-    captionHeader: {
-      marginBottom: 16,
-      paddingHorizontal: 4,
-    },
-    captionHeaderText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDark ? '#FFFFFF' : '#000000',
     },
   });
 
@@ -223,12 +266,12 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -236,21 +279,93 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
     });
   }, []);
 
-  // Display captions without interfering with video playback
+  // Update current caption index based on video time
   useEffect(() => {
-    if (!isVisible || captions.length === 0) return;
+    if (captions.length === 0 || currentTime === undefined) return;
     
-    // Just show the first caption initially
-    setCurrentCaptionIndex(0);
-  }, [captions, isVisible]);
+    // Find the caption that should be active at the current time
+    let newIndex = -1;
+    
+    // First, try to find an exact match (current time falls within caption duration)
+    newIndex = captions.findIndex(caption => 
+      currentTime >= caption.startTime && currentTime <= caption.endTime
+    );
+    
+    // If no exact match, find the closest caption that hasn't ended yet
+    if (newIndex === -1) {
+      newIndex = captions.findIndex((caption, index) => {
+        const nextCaption = captions[index + 1];
+        return currentTime >= caption.startTime && 
+               (!nextCaption || currentTime < nextCaption.startTime);
+      });
+    }
+    
+    // If still no match, find the closest caption by time
+    if (newIndex === -1) {
+      let closestDistance = Infinity;
+      captions.forEach((caption, index) => {
+        const distance = Math.abs(currentTime - caption.startTime);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          newIndex = index;
+        }
+      });
+    }
+    
+    if (newIndex !== -1 && newIndex !== currentCaptionIndex) {
+      setCurrentCaptionIndex(newIndex);
+    }
+  }, [currentTime, captions]);
 
-  const currentCaption = captions[currentCaptionIndex];
-  const progress = videoDuration > 0 ? Math.min(currentTime / videoDuration, 1) : 0;
+  // Auto-scroll to current caption
+  useEffect(() => {
+    if (!autoScrollEnabled || userScrolling || !scrollViewRef.current || currentCaptionIndex < 0) {
+      return;
+    }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const timeoutId = setTimeout(() => {
+      if (scrollViewRef.current && currentCaptionIndex >= 0) {
+        // Use estimated position to avoid ref measurement issues
+        const estimatedItemHeight = 60; // Approximate height per caption item
+        const estimatedY = currentCaptionIndex * estimatedItemHeight;
+        const scrollOffset = Math.max(0, estimatedY - 60); // Keep some items visible above
+        
+        scrollViewRef.current.scrollTo({
+          y: scrollOffset,
+          animated: true,
+        });
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentCaptionIndex, autoScrollEnabled, userScrolling]);
+
+  // Reset user scrolling flag after a delay
+  useEffect(() => {
+    if (userScrolling) {
+      const timeoutId = setTimeout(() => {
+        setUserScrolling(false);
+      }, 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [userScrolling]);
+
+  const handleScroll = () => {
+    if (autoScrollEnabled) {
+      setUserScrolling(true);
+    }
+  };
+
+  const toggleAutoScroll = () => {
+    setAutoScrollEnabled(!autoScrollEnabled);
+    setUserScrolling(false);
+  };
+
+  const toggleHeight = () => {
+    const heightOrder: OverlayHeight[] = ['collapsed', 'medium', 'expanded'];
+    const currentIndex = heightOrder.indexOf(overlayHeight);
+    const nextIndex = (currentIndex + 1) % heightOrder.length;
+    setOverlayHeight(heightOrder[nextIndex]);
   };
 
   const handleClose = () => {
@@ -270,6 +385,32 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
     });
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleCaptionPress = (caption: Caption) => {
+    if (onSeekToTime) {
+      console.log(`🎯 Seeking to caption time: ${caption.startTime}s`);
+      onSeekToTime(caption.startTime);
+    }
+  };
+
+  const getHeightIcon = () => {
+    switch (overlayHeight) {
+      case 'collapsed':
+        return 'expand';
+      case 'medium':
+        return 'expand';
+      case 'expanded':
+        return 'contract';
+      default:
+        return 'expand';
+    }
+  };
+
   if (captions.length === 0) {
     return (
       <Animated.View
@@ -281,13 +422,14 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
           },
         ]}
       >
-        <View style={styles.container}>
+        <View style={[styles.container, { height: getHeightForState(overlayHeight) }]}>
+          <View style={styles.dragHandle} />
           <View style={styles.header}>
             <Text style={styles.title}>Captions</Text>
             <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons 
                 name="close" 
-                size={20} 
+                size={18} 
                 color={isDark ? '#FFFFFF' : '#000000'} 
               />
             </TouchableOpacity>
@@ -297,14 +439,14 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
               <>
                 <Ionicons 
                   name="hourglass-outline" 
-                  size={48} 
+                  size={40} 
                   color={isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)'} 
                 />
-                <Text style={[styles.emptyStateText, { marginTop: 16, fontSize: 18, fontWeight: '600' }]}>
-                  Captions Generating
+                <Text style={[styles.emptyStateText, { marginTop: 12, fontSize: 16, fontWeight: '600' }]}>
+                  Generating Captions
                 </Text>
-                <Text style={[styles.emptyStateText, { marginTop: 8, fontSize: 14 }]}>
-                  Thanks for your patience
+                <Text style={[styles.emptyStateText, { marginTop: 4, fontSize: 12 }]}>
+                  Please wait...
                 </Text>
               </>
             ) : (
@@ -327,54 +469,98 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
       ]}
     >
       <View style={styles.container}>
+        <View style={styles.dragHandle} />
+        
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Live Captions</Text>
+            <View style={styles.savedIndicator}>
+              <Ionicons 
+                name="checkmark-circle" 
+                size={16} 
+                color="#34C759" 
+              />
+              <Text style={styles.savedText}>Auto-saved</Text>
+            </View>
           </View>
           <View style={styles.headerRight}>
-            {onSave && (
-              <TouchableOpacity style={styles.saveButton} onPress={onSave}>
-                <Ionicons 
-                  name={isSaved ? "checkmark" : "bookmark-outline"} 
-                  size={14} 
-                  color="#FFFFFF" 
-                />
-                <Text style={styles.saveButtonText}>
-                  {isSaved ? 'Saved' : 'Save'}
-                </Text>
-              </TouchableOpacity>
-            )}
             <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons 
                 name="close" 
-                size={20} 
+                size={18} 
                 color={isDark ? '#FFFFFF' : '#000000'} 
               />
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.captionHeader}>
-          <Text style={styles.captionHeaderText}>
-            Video Captions ({captions.length} captions)
+        <View style={styles.controlsContainer}>
+          <Text style={styles.captionCount}>
+            {captions.length} captions
           </Text>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity style={styles.autoScrollToggle} onPress={toggleAutoScroll}>
+              <Ionicons 
+                name={autoScrollEnabled ? "radio-button-on" : "radio-button-off"} 
+                size={12} 
+                color={isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)'} 
+              />
+              <Text style={styles.autoScrollText}>
+                Auto-track
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.heightToggle} onPress={toggleHeight}>
+              <Ionicons 
+                name={getHeightIcon()} 
+                size={12} 
+                color={isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)'} 
+              />
+              <Text style={styles.heightToggleText}>
+                {overlayHeight === 'collapsed' ? 'Expand' : overlayHeight === 'medium' ? 'More' : 'Less'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {videoDuration > 0 && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View 
+                style={[
+                  styles.progressFill, 
+                  { width: `${Math.min((currentTime / videoDuration) * 100, 100)}%` }
+                ]} 
+              />
+            </View>
+            <View style={styles.progressInfo}>
+              <Text style={styles.progressText}>{formatTime(currentTime)}</Text>
+              <Text style={styles.progressText}>{formatTime(videoDuration)}</Text>
+            </View>
+          </View>
+        )}
 
         <ScrollView 
           ref={scrollViewRef}
           style={styles.captionsList}
           showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={handleScroll}
+          scrollEventThrottle={16}
         >
           {captions.map((caption, index) => {
             const isActive = index === currentCaptionIndex;
             
             return (
-              <View
+              <TouchableOpacity
                 key={`${caption.startTime}-${caption.endTime}-${index}`}
+                ref={(ref) => {
+                  captionRefs.current[index] = ref;
+                }}
                 style={[
                   styles.captionItem,
                   isActive && styles.captionItemActive,
                 ]}
+                onPress={() => handleCaptionPress(caption)}
+                activeOpacity={0.7}
               >
                 <Text
                   style={[
@@ -387,7 +573,7 @@ const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
                 <Text style={styles.captionTime}>
                   {formatTime(caption.startTime)} - {formatTime(caption.endTime)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
